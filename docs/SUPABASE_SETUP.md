@@ -59,21 +59,30 @@ Apri **Project Settings → API** (oppure **Data API** / **API Keys**) e copia:
 > ⚠️ Usa solo la chiave *anon/publishable*. **Mai** la `service_role`/*secret*: aggirerebbe tutte le
 > regole di sicurezza.
 
-Hai due possibilità:
+Questi dati vengono **inseriti nell'APK al momento della build**: chi installa l'app non deve
+configurare niente. Scegli uno dei due modi:
 
-**A. Inserirli al primo avvio dell'app** (nessuna configurazione di build). Ogni membro della casa li
-inserisce una volta sola nella schermata di benvenuto. Puoi mandarli in chat: la chiave anon è pensata
-per stare dentro le app ed è protetta dalle policy RLS.
+**A. Secret di GitHub (consigliato)** – **Settings → Secrets and variables → Actions → New repository
+secret**, crea:
 
-**B. Includerli nell'APK**, così nessuno deve inserirli:
+| Nome | Valore |
+|---|---|
+| `SUPABASE_URL` | il Project URL, es. `https://abcdefghijkl.supabase.co` |
+| `SUPABASE_ANON_KEY` | la chiave anon / publishable |
 
-- in locale, nel file `local.properties` nella radice del progetto:
-  ```properties
-  supabase.url=https://abcdefghijkl.supabase.co
-  supabase.anonKey=eyJhbGciOi...
-  ```
-- su GitHub Actions: **Settings → Secrets and variables → Actions → New repository secret**, crea
-  `SUPABASE_URL` e `SUPABASE_ANON_KEY`. La build della CI li userà in automatico.
+I secret valgono solo per le build avviate **dopo** averli salvati: per rigenerare l'APK vai in
+**Actions → Android → Run workflow** (o fai un nuovo push).
+
+**B. File `supabase.properties`** nella radice del repository (utile anche per compilare in locale):
+
+```properties
+supabase.url=https://abcdefghijkl.supabase.co
+supabase.anonKey=sb_publishable_...
+```
+
+Se entrambi sono presenti vincono i secret. L'URL può anche essere incollato con `/rest/v1/` finale:
+l'app tiene solo l'indirizzo base. La build release si blocca con un messaggio chiaro se mancano i dati
+o se per errore viene usata una chiave segreta.
 
 ## 5. Invita gli altri membri
 

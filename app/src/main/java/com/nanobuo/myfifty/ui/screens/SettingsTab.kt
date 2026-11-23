@@ -186,18 +186,11 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
             SectionCard(title = "Account") {
                 Text(myName.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium)
                 Text(vm.myEmail.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    "Server: " + (vm.currentConfig()?.url?.removePrefix("https://") ?: ""),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton({ vm.signOut() }) {
                         Icon(Icons.AutoMirrored.Outlined.Logout, null); Text("  Esci")
                     }
                     TextButton({ dialog = "leave" }) { Text("Lascia la casa", color = MaterialTheme.colorScheme.error) }
-                }
-                if (BuildConfig.SUPABASE_URL.isBlank()) {
-                    TextButton({ dialog = "server" }) { Text("Cambia server Supabase") }
                 }
             }
         }
@@ -220,10 +213,6 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
             "Lasciare \"${h.name}\"?",
             "Non vedrai più le spese di questa casa. Se sei l'ultimo membro la casa e tutti i suoi movimenti verranno eliminati definitivamente. Ti consigliamo di esportare un backup prima.",
             "Lascia", { vm.leaveHousehold() }, { dialog = null },
-        )
-        "server" -> ConfirmDialog(
-            "Cambiare server?", "Verrai disconnesso e potrai inserire un nuovo Project URL e una nuova chiave.",
-            "Cambia", { vm.resetConfig() }, { dialog = null },
         )
     }
 

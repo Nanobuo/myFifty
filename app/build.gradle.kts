@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -7,14 +8,30 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Supabase URL / anon key: da local.properties (sviluppo) o variabili d'ambiente (CI).
-// Se restano vuoti l'app chiede i dati al primo avvio.
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
+// Supabase URL / anon key vengono inseriti nell'APK: l'utente non deve configurare nulla.
+// Ordine di priorità: variabili d'ambiente (secret della CI) > local.properties > supabase.properties.
+// La chiave anon/publishable è pubblica per design (la sicurezza è nelle policy RLS):
+// può stare nel repository. MAI mettere qui la chiave service_role / secret.
+fun props(name: String) = Properties().apply {
+    val f = rootProject.file(name)
     if (f.exists()) f.inputStream().use { load(it) }
 }
+val localProps = props("local.properties")
+val supabaseProps = props("supabase.properties")
 fun cfg(key: String, env: String): String =
-    (localProps.getProperty(key) ?: System.getenv(env) ?: "").trim()
+    (System.getenv(env)?.takeIf { it.isNotBlank() }
+        ?: localProps.getProperty(key)?.takeIf { it.isNotBlank() }
+        ?: supabaseProps.getProperty(key) ?: "").trim()
+val supabaseUrl = cfg("supabase.url", "SUPABASE_URL").trim('"').trim()
+val supabaseAnonKey = cfg("supabase.anonKey", "SUPABASE_ANON_KEY").trim('"').trim()
+require(!supabaseAnonKey.contains('"') && !supabaseUrl.contains('"')) { "URL o chiave Supabase contengono virgolette" }
+// le chiavi legacy sono JWT: il ruolo è nel payload (base64url)
+val keyRole = runCatching {
+    String(Base64.getUrlDecoder().decode(supabaseAnonKey.split('.')[1].trimEnd('=')))
+}.getOrDefault("")
+require(!supabaseAnonKey.startsWith("sb_secret_") && !keyRole.contains("service_role")) {
+    "supabase.anonKey contiene una chiave segreta: usa la chiave anon / publishable"
+}
 
 // Firma release opzionale (keystore.properties o variabili d'ambiente in CI)
 val keystoreProps = Properties().apply {
@@ -38,8 +55,8 @@ android {
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
 
-        buildConfigField("String", "SUPABASE_URL", "\"${cfg("supabase.url", "SUPABASE_URL")}\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${cfg("supabase.anonKey", "SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
     signingConfigs {
@@ -127,3 +144,14 @@ android {
         disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "ObsoleteSdkInt", "NewerVersionAvailable")
     }
 }
+
+// Un APK da distribuire senza i dati del server non avrebbe senso: blocca la build release.
+val checkSupabaseConfig by tasks.registering {
+    doLast {
+        if (supabaseUrl.isBlank() || supabaseAnonKey.isBlank()) throw GradleException(
+            "Configurazione Supabase mancante: compila supabase.properties (supabase.url e supabase.anonKey) " +
+                "oppure imposta i secret SUPABASE_URL e SUPABASE_ANON_KEY. Vedi docs/SUPABASE_SETUP.md"
+        )
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkSupabaseConfig) }

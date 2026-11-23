@@ -44,7 +44,8 @@ Dati salvati su [Supabase](https://supabase.com) e sincronizzati in tempo reale 
    [`supabase/schema.sql`](supabase/schema.sql)).
 2. **Installazione**: scarica l'APK dagli *Artifacts* dell'ultima esecuzione di
    [GitHub Actions](../../actions) oppure dalle *Releases* (pubblicate a ogni tag `v*`, es. `v1.0.0`).
-3. Al primo avvio inserisci Project URL e chiave *anon* (a meno che non siano già nell'APK, vedi guida).
+3. URL e chiave *anon* sono inseriti nell'APK in fase di build (secret `SUPABASE_URL` e `SUPABASE_ANON_KEY`
+   o file `supabase.properties`): chi installa l'app deve solo registrarsi.
 
 ### Firma dell'APK (per poter aggiornare l'app senza disinstallarla)
 
@@ -76,7 +77,7 @@ Requisiti: JDK 17+, Android SDK 35 (Android Studio recente va benissimo).
 ./gradlew assembleDebug       # APK in app/build/outputs/apk/debug/
 ```
 
-Per non dover inserire URL e chiave a ogni installazione di debug, aggiungi a `local.properties`:
+URL e chiave si leggono (in ordine) da variabili d'ambiente, `local.properties` o `supabase.properties`:
 
 ```properties
 supabase.url=https://xxxx.supabase.co

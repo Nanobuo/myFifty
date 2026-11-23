@@ -4,42 +4,47 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.nanobuo.myfifty.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 enum class ThemeMode(val label: String) { SYSTEM("Sistema"), LIGHT("Chiaro"), DARK("Scuro") }
 
-data class SupabaseConfig(val url: String, val anonKey: String)
+data class SupabaseConfig(val url: String, val anonKey: String) {
+    companion object {
+        /** URL e chiave sono inseriti nell'APK al momento della build (vedi supabase.properties). */
+        fun fromBuild(): SupabaseConfig? {
+            val url = normalizeUrl(com.nanobuo.myfifty.BuildConfig.SUPABASE_URL)
+            val key = com.nanobuo.myfifty.BuildConfig.SUPABASE_ANON_KEY.trim().trim('"')
+            return if (url.isBlank() || key.isBlank()) null else SupabaseConfig(url, key)
+        }
+
+        /**
+         * Tiene solo schema e host: "xyz.supabase.co/rest/v1/" -> "https://xyz.supabase.co".
+         * (supabase-kt rifiuta URL che contengono /rest/v1, /auth/v1, ...)
+         */
+        fun normalizeUrl(raw: String): String {
+            val s = raw.trim().trim('"').trim()
+            if (s.isEmpty()) return ""
+            val scheme = if (s.startsWith("http://")) "http://" else "https://"
+            val host = s.substringAfter("://").substringBefore('/').substringBefore('?').trim()
+            return if (host.isEmpty()) "" else scheme + host
+        }
+    }
+}
 
 private val Context.dataStore by preferencesDataStore("myfifty_settings")
 
 class SettingsStore(private val context: Context) {
     private val kTheme = stringPreferencesKey("theme")
-    private val kUrl = stringPreferencesKey("supabase_url")
-    private val kKey = stringPreferencesKey("supabase_key")
     private val kHousehold = stringPreferencesKey("household_id")
 
     val theme: Flow<ThemeMode> = context.dataStore.data.map { p ->
         p[kTheme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM
     }
 
-    /** Config da BuildConfig se presente, altrimenti quella inserita nell'app. */
-    val supabaseConfig: Flow<SupabaseConfig?> = context.dataStore.data.map { p ->
-        val url = p[kUrl].orEmpty().ifBlank { BuildConfig.SUPABASE_URL }
-        val key = p[kKey].orEmpty().ifBlank { BuildConfig.SUPABASE_ANON_KEY }
-        if (url.isBlank() || key.isBlank()) null else SupabaseConfig(url.trim().trimEnd('/'), key.trim())
-    }
-
     val householdId: Flow<String?> = context.dataStore.data.map { it[kHousehold] }
 
     suspend fun setTheme(mode: ThemeMode) = context.dataStore.edit { it[kTheme] = mode.name }
-
-    suspend fun setSupabaseConfig(url: String, key: String) = context.dataStore.edit {
-        it[kUrl] = url.trim(); it[kKey] = key.trim()
-    }
-
-    suspend fun clearSupabaseConfig() = context.dataStore.edit { it.remove(kUrl); it.remove(kKey); it.remove(kHousehold) }
 
     suspend fun setHouseholdId(id: String?) = context.dataStore.edit {
         if (id == null) it.remove(kHousehold) else it[kHousehold] = id

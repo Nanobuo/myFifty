@@ -34,7 +34,6 @@ import com.nanobuo.myfifty.ui.screens.AuthScreen
 import com.nanobuo.myfifty.ui.screens.ExpenseEditorScreen
 import com.nanobuo.myfifty.ui.screens.HomeScreen
 import com.nanobuo.myfifty.ui.screens.HouseholdSetupScreen
-import com.nanobuo.myfifty.ui.screens.SetupScreen
 
 val LocalSnackbar = staticCompositionLocalOf { SnackbarHostState() }
 
@@ -57,7 +56,7 @@ fun AppRoot(vm: AppViewModel) {
             Box(Modifier.fillMaxSize()) {
                 when (gate) {
                     Gate.LOADING -> LoadingScreen(vm)
-                    Gate.NEEDS_CONFIG -> SetupScreen(vm)
+                    Gate.NEEDS_CONFIG -> NotConfiguredScreen(vm)
                     Gate.SIGNED_OUT -> AuthScreen(vm)
                     Gate.NO_HOUSEHOLD -> HouseholdSetupScreen(vm, onBack = null)
                     Gate.READY -> MainNav(vm)
@@ -68,6 +67,27 @@ fun AppRoot(vm: AppViewModel) {
                 )
             }
         }
+    }
+}
+
+/** Solo per build di sviluppo create senza supabase.properties: l'utente non deve inserire nulla. */
+@Composable
+private fun NotConfiguredScreen(vm: AppViewModel) {
+    val error by vm.initError.collectAsStateWithLifecycle()
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Logo(120.dp)
+        Text("Configurazione non valida", style = MaterialTheme.typography.titleLarge)
+        Text(error.orEmpty(), textAlign = TextAlign.Center)
+        Text(
+            "Controlla i secret SUPABASE_URL e SUPABASE_ANON_KEY (o supabase.properties) e ricompila.",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

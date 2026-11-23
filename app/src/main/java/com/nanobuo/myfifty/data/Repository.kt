@@ -22,6 +22,7 @@ import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.serializer.KotlinXSerializer
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -61,6 +62,7 @@ class Repository(val config: SupabaseConfig) {
 
     val client: SupabaseClient = createSupabaseClient(config.url, config.anonKey) {
         defaultSerializer = KotlinXSerializer(AppJson)
+        httpEngine = OkHttp.create()
         install(Auth)
         install(Postgrest)
         install(Realtime)

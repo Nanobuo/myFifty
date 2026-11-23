@@ -78,6 +78,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
+    private val _initError = MutableStateFlow<String?>(null)
+    /** Errore di inizializzazione del client (configurazione di build errata). */
+    val initError: StateFlow<String?> = _initError.asStateFlow()
+
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = _loadError.asStateFlow()
 
@@ -118,11 +122,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            settings.supabaseConfig.distinctUntilChanged().collect { cfg ->
-                _repo.value?.close()
-                _repo.value = cfg?.let { runCatching { Repository(it) }.getOrNull() }
-                configLoaded.value = true
+            val cfg = SupabaseConfig.fromBuild()
+            if (cfg == null) {
+                _initError.value = "Questa versione è stata compilata senza i dati del server Supabase."
+            } else {
+                runCatching { Repository(cfg) }
+                    .onSuccess { _repo.value = it }
+                    .onFailure { _initError.value = "Impossibile collegarsi a ${cfg.url}: ${it.message ?: it}" }
             }
+            configLoaded.value = true
         }
         viewModelScope.launch {
             session.map { it is SessionStatus.Authenticated }.distinctUntilChanged().collect { authed ->
@@ -209,17 +217,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { settings.setTheme(mode) }
 
-    fun saveConfig(url: String, key: String) = viewModelScope.launch {
-        val u = url.trim().let { if (it.startsWith("http")) it else "https://$it" }
-        settings.setSupabaseConfig(u, key)
-    }
-
-    fun resetConfig() = viewModelScope.launch {
-        runCatching { _repo.value?.signOut() }
-        settings.clearSupabaseConfig()
-    }
-
-    fun currentConfig(): SupabaseConfig? = _repo.value?.config
 
     // ------------------------------------------------------------ auth
 
