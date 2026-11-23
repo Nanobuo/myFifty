@@ -23,6 +23,10 @@ val keystoreProps = Properties().apply {
 }
 fun ks(key: String, env: String): String? = keystoreProps.getProperty(key) ?: System.getenv(env)
 
+// Screenshot delle schermate con Robolectric: solo con SCREENSHOTS=1, perché
+// richiedono di scaricare un runtime Android (~150 MB). La CI non ne ha bisogno.
+val screenshots = System.getenv("SCREENSHOTS") == "1"
+
 android {
     namespace = "com.nanobuo.myfifty"
     compileSdk = 35
@@ -76,6 +80,9 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+    if (screenshots) {
+        sourceSets.getByName("test").java.srcDir("src/screenshotTest/java")
+    }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST", "/META-INF/io.netty.versions.properties")
     }
@@ -107,10 +114,12 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
-    testImplementation(libs.robolectric)
-    testImplementation(platform(libs.androidx.compose.bom))
-    testImplementation(libs.androidx.ui.test.junit4)
-    debugImplementation(libs.androidx.ui.test.manifest)
+    if (screenshots) {
+        testImplementation(libs.robolectric)
+        testImplementation(platform(libs.androidx.compose.bom))
+        testImplementation(libs.androidx.ui.test.junit4)
+        debugImplementation(libs.androidx.ui.test.manifest)
+    }
 }
 
 android {

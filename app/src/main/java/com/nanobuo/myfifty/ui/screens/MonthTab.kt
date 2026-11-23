@@ -17,7 +17,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Handshake
-import androidx.compose.material.icons.outlined.Undo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -172,7 +172,7 @@ fun ExpenseRow(e: Expense, d: HouseholdData, me: String?, onClick: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             when (kind) {
                 ExpenseKind.SETTLEMENT -> CategoryBadge(Category.OTHER, icon = Icons.Outlined.Handshake)
-                ExpenseKind.REFUND -> CategoryBadge(e.categoryEnum, icon = Icons.Outlined.Undo)
+                ExpenseKind.REFUND -> CategoryBadge(e.categoryEnum, icon = Icons.AutoMirrored.Outlined.Undo)
                 else -> CategoryBadge(e.categoryEnum)
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {

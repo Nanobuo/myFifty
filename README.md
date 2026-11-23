@@ -86,7 +86,7 @@ supabase.anonKey=...
 Screenshot di tutte le schermate con dati finti (Robolectric, nessun backend necessario):
 
 ```bash
-SCREENSHOTS=1 ./gradlew testDebugUnitTest --tests '*ScreenshotTest*'   # → app/build/screenshots/
+SCREENSHOTS=1 ./gradlew testDebugUnitTest --tests '*ScreenshotTest*'   # → app/build/screenshots/ (test in app/src/screenshotTest)
 ```
 
 ### Struttura

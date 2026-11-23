@@ -10,7 +10,7 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import java.time.YearMonth
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    MONTH("Movimenti", Icons.Outlined.ReceiptLong),
+    MONTH("Movimenti", Icons.AutoMirrored.Outlined.ReceiptLong),
     BALANCES("Saldi", Icons.Outlined.AccountBalanceWallet),
     STATS("Statistiche", Icons.Outlined.BarChart),
     SETTINGS("Altro", Icons.Outlined.Settings),
