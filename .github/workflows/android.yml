@@ -31,7 +31,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Keystore di firma (opzionale)
+      - name: Le release richiedono la chiave di firma
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Manca il secret SIGNING_KEYSTORE_BASE64: senza una chiave fissa gli aggiornamenti non si installano"
+            exit 1
+          fi
+
+      - name: Keystore di firma
         env:
           KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
         if: env.KEYSTORE_BASE64 != ''
@@ -50,17 +60,25 @@ jobs:
         run: |
           ./gradlew --no-daemon assembleRelease assembleDebug
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/myFifty.apk
+          cp app/build/outputs/apk/release/app-release.apk "out/myFifty-${VERSION_NAME:-dev}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk out/myFifty-debug.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: myFifty-apk
           path: out/*.apk
+
+      - name: Note di rilascio dal CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          awk -v v="$VERSION_NAME" '$0 ~ "^## \\[?"v"\\]?( |$)" {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Versione $VERSION_NAME" > notes.md; fi
+          cat notes.md
 
       - name: Pubblica release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/myFifty.apk
-          generate_release_notes: true
+          name: myFifty ${{ env.VERSION_NAME }}
+          body_path: notes.md
+          files: out/myFifty-${{ env.VERSION_NAME }}.apk

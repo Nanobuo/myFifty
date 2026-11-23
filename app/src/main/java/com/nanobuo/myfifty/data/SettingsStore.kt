@@ -2,6 +2,7 @@ package com.nanobuo.myfifty.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,7 @@ private val Context.dataStore by preferencesDataStore("myfifty_settings")
 class SettingsStore(private val context: Context) {
     private val kTheme = stringPreferencesKey("theme")
     private val kHousehold = stringPreferencesKey("household_id")
+    private val kLastUpdateCheck = longPreferencesKey("last_update_check")
 
     val theme: Flow<ThemeMode> = context.dataStore.data.map { p ->
         p[kTheme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM
@@ -45,6 +47,10 @@ class SettingsStore(private val context: Context) {
     val householdId: Flow<String?> = context.dataStore.data.map { it[kHousehold] }
 
     suspend fun setTheme(mode: ThemeMode) = context.dataStore.edit { it[kTheme] = mode.name }
+
+    val lastUpdateCheck: Flow<Long> = context.dataStore.data.map { it[kLastUpdateCheck] ?: 0L }
+
+    suspend fun setLastUpdateCheck(millis: Long) = context.dataStore.edit { it[kLastUpdateCheck] = millis }
 
     suspend fun setHouseholdId(id: String?) = context.dataStore.edit {
         if (id == null) it.remove(kHousehold) else it[kHousehold] = id

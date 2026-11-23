@@ -47,26 +47,32 @@ Dati salvati su [Supabase](https://supabase.com) e sincronizzati in tempo reale 
 3. URL e chiave *anon* sono inseriti nell'APK in fase di build (secret `SUPABASE_URL` e `SUPABASE_ANON_KEY`
    o file `supabase.properties`): chi installa l'app deve solo registrarsi.
 
-### Firma dell'APK (per poter aggiornare l'app senza disinstallarla)
+### Aggiornamenti e release
 
-Android installa un aggiornamento solo se è firmato con la stessa chiave della versione installata.
-Senza configurazione la CI firma con una chiave di debug temporanea, diversa a ogni esecuzione.
-Per aggiornamenti senza problemi crea una volta un keystore:
+L'app controlla da sola (al massimo ogni 12 ore, o da **Altro → Aggiornamenti**) l'ultima
+[release](../../releases) di questo repository: se è più recente propone di scaricarla e installarla.
 
-```bash
-keytool -genkeypair -v -keystore myfifty.jks -alias myfifty -keyalg RSA -keysize 2048 -validity 10000
-```
+Per pubblicare una nuova versione:
 
-e aggiungi questi secret al repository (**Settings → Secrets and variables → Actions**):
+1. aggiorna `appVersion` in `gradle.properties` e aggiungi le novità in [`CHANGELOG.md`](CHANGELOG.md)
+   (sezione `## x.y.z`, diventa il testo della release);
+2. crea e pubblica il tag corrispondente:
+   ```bash
+   git tag v1.1.0 && git push origin v1.1.0
+   ```
+   GitHub Actions compila, firma e pubblica la release con l'APK.
+
+Android installa un aggiornamento solo se è firmato con **la stessa chiave** della versione installata,
+quindi le release richiedono questi secret (**Settings → Secrets and variables → Actions**):
 
 | Secret | Valore |
 |---|---|
-| `SIGNING_KEYSTORE_BASE64` | output di `base64 -w0 myfifty.jks` |
+| `SIGNING_KEYSTORE_BASE64` | il keystore codificato in base64 |
 | `SIGNING_STORE_PASSWORD` | password del keystore |
-| `SIGNING_KEY_ALIAS` | `myfifty` |
+| `SIGNING_KEY_ALIAS` | alias della chiave |
 | `SIGNING_KEY_PASSWORD` | password della chiave |
 
-Conserva il file `.jks` in un posto sicuro: se lo perdi, gli utenti dovranno disinstallare e reinstallare.
+Conserva il keystore in un posto sicuro: se lo perdi, gli utenti dovranno disinstallare e reinstallare.
 
 ## Sviluppo
 

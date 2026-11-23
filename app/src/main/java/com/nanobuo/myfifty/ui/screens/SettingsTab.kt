@@ -58,6 +58,8 @@ import com.nanobuo.myfifty.data.ThemeMode
 import com.nanobuo.myfifty.io.ImportExport
 import com.nanobuo.myfifty.ui.AppViewModel
 import com.nanobuo.myfifty.ui.HouseholdData
+import com.nanobuo.myfifty.ui.UpdateState
+import androidx.compose.material.icons.outlined.SystemUpdate
 import com.nanobuo.myfifty.ui.components.Avatar
 import com.nanobuo.myfifty.ui.components.CategoryBadge
 import com.nanobuo.myfifty.ui.components.CategoryDialog
@@ -224,6 +226,16 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
                         Icon(Icons.AutoMirrored.Outlined.Logout, null); Text("  Esci")
                     }
                     TextButton({ dialog = "leave" }) { Text("Lascia la casa", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        }
+        item {
+            val update by vm.update.collectAsStateWithLifecycle()
+            SectionCard(title = "Aggiornamenti") {
+                Text("Versione installata: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton({ vm.checkForUpdates(manual = true) }, enabled = update !is UpdateState.Checking) {
+                    Icon(Icons.Outlined.SystemUpdate, null)
+                    Text(if (update is UpdateState.Checking) "  Controllo…" else "  Controlla aggiornamenti")
                 }
             }
         }

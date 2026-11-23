@@ -49,6 +49,8 @@ object Routes {
 fun AppRoot(vm: AppViewModel) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    // Controllo automatico (max ogni 12 ore) solo per le build release: la debug è un'app separata.
+    LaunchedEffect(Unit) { if (!com.nanobuo.myfifty.BuildConfig.DEBUG) vm.checkForUpdates(manual = false) }
     val gate by vm.gate.collectAsStateWithLifecycle()
 
     CompositionLocalProvider(LocalSnackbar provides snackbar) {
@@ -61,6 +63,7 @@ fun AppRoot(vm: AppViewModel) {
                     Gate.NO_HOUSEHOLD -> HouseholdSetupScreen(vm, onBack = null)
                     Gate.READY -> MainNav(vm)
                 }
+                com.nanobuo.myfifty.ui.components.UpdateDialog(vm)
                 SnackbarHost(
                     snackbar,
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),

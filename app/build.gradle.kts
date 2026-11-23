@@ -53,9 +53,14 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
+        // Release: VERSION_NAME dal tag (es. 1.0.0). Altre build: 1.0.0-dev.<n>, considerate
+        // più vecchie della release 1.0.0, così il controllo aggiornamenti propone la release.
+        versionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() }
+            ?: "${providers.gradleProperty("appVersion").get()}-dev.${System.getenv("VERSION_CODE") ?: "0"}"
 
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        // repository da cui scaricare gli aggiornamenti (GitHub Releases)
+        buildConfigField("String", "UPDATE_REPO", "\"${System.getenv("GITHUB_REPOSITORY") ?: "Nanobuo/myFifty"}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 

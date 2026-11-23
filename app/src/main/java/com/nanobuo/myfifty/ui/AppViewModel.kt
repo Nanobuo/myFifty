@@ -3,7 +3,11 @@ package com.nanobuo.myfifty.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nanobuo.myfifty.BuildConfig
+import com.nanobuo.myfifty.data.ApkInstaller
+import com.nanobuo.myfifty.data.AppRelease
 import com.nanobuo.myfifty.data.Repository
+import com.nanobuo.myfifty.data.UpdateChecker
 import com.nanobuo.myfifty.data.SettingsStore
 import com.nanobuo.myfifty.data.SupabaseConfig
 import com.nanobuo.myfifty.data.ThemeMode
@@ -38,6 +42,17 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.UUID
+
+sealed interface UpdateState {
+    data object Idle : UpdateState
+    data object Checking : UpdateState
+    data object UpToDate : UpdateState
+    data class Available(val release: AppRelease) : UpdateState
+    data class Downloading(val release: AppRelease, val progress: Float) : UpdateState
+    data class NeedsPermission(val release: AppRelease) : UpdateState
+    data class Ready(val release: AppRelease) : UpdateState
+    data class Failed(val message: String, val release: AppRelease?) : UpdateState
+}
 
 enum class Gate { LOADING, NEEDS_CONFIG, SIGNED_OUT, NO_HOUSEHOLD, READY }
 
@@ -129,6 +144,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.Eagerly, Gate.LOADING)
 
     private var realtimeJob: Job? = null
+
+    // ------------------------------------------------------------ aggiornamenti
+
+    private val updater = UpdateChecker(BuildConfig.UPDATE_REPO)
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+    private var updateJob: Job? = null
+
+    /** [manual] = dal pulsante in "Altro": mostra anche "nessun aggiornamento" ed errori. */
+    fun checkForUpdates(manual: Boolean) {
+        if (updateJob?.isActive == true) return
+        updateJob = viewModelScope.launch {
+            if (!manual) {
+                val last = settings.lastUpdateCheck.first()
+                if (System.currentTimeMillis() - last < 12 * 3600_000L) return@launch
+            } else _update.value = UpdateState.Checking
+            runCatching { updater.latest() }
+                .onSuccess { r ->
+                    settings.setLastUpdateCheck(System.currentTimeMillis())
+                    _update.value = when {
+                        r != null && UpdateChecker.isNewer(r.version, BuildConfig.VERSION_NAME) -> UpdateState.Available(r)
+                        manual -> UpdateState.UpToDate
+                        else -> UpdateState.Idle
+                    }
+                }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    _update.value = if (manual) UpdateState.Failed("Controllo non riuscito: ${friendly(it)}", null) else UpdateState.Idle
+                }
+        }
+    }
+
+    fun downloadUpdate(release: AppRelease) {
+        if (updateJob?.isActive == true) return
+        val ctx = getApplication<Application>()
+        updateJob = viewModelScope.launch {
+            _update.value = UpdateState.Downloading(release, 0f)
+            val file = ApkInstaller.updateFile(ctx)
+            runCatching {
+                updater.download(release, file) { p -> _update.value = UpdateState.Downloading(release, p) }
+            }.onSuccess { installUpdate(release) }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    _update.value = UpdateState.Failed("Download non riuscito: ${friendly(it)}", release)
+                }
+        }
+    }
+
+    /** Chiamata anche al ritorno dalle impostazioni del permesso "installa app sconosciute". */
+    fun installUpdate(release: AppRelease) {
+        val ctx = getApplication<Application>()
+        val file = ApkInstaller.updateFile(ctx)
+        if (!file.exists()) { downloadUpdate(release); return }
+        if (!ApkInstaller.canInstall(ctx)) { _update.value = UpdateState.NeedsPermission(release); return }
+        runCatching { ApkInstaller.install(ctx, file) }
+            .onSuccess { _update.value = UpdateState.Ready(release) }
+            .onFailure { _update.value = UpdateState.Failed(it.message ?: "Installazione non riuscita", release) }
+    }
+
+    fun openInstallPermission() = ApkInstaller.openInstallPermissionSettings(getApplication())
+
+    fun openReleasePage(release: AppRelease) = ApkInstaller.openInBrowser(getApplication(), release.pageUrl)
+
+    fun dismissUpdate() {
+        updateJob?.cancel()
+        _update.value = UpdateState.Idle
+    }
 
     init {
         viewModelScope.launch {
