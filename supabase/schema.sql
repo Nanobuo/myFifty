@@ -64,6 +64,83 @@ create table if not exists public.expenses (
 create index if not exists expenses_household_date_idx on public.expenses (household_id, expense_date desc);
 
 -- ---------------------------------------------------------------------
+-- Categorie (per casa, modificabili dai membri). La categoria 'other'
+-- ("Altro") esiste sempre e non si può eliminare.
+-- ---------------------------------------------------------------------
+create table if not exists public.categories (
+  household_id uuid not null references public.households (id) on delete cascade,
+  key          text not null check (char_length(key) between 1 and 40),
+  name         text not null check (char_length(name) between 1 and 40),
+  icon         text not null default 'tag',
+  color        text not null default '#8A8F98' check (color ~ '^#[0-9A-Fa-f]{6}$'),
+  position     int  not null default 100,
+  created_at   timestamptz not null default now(),
+  primary key (household_id, key)
+);
+
+create or replace function public.seed_categories(p_household uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  insert into public.categories (household_id, key, name, icon, color, position)
+  values
+    (p_household, 'groceries',     'Alimentari',           'cart',      '#4E9E6E', 1),
+    (p_household, 'electricity',   'Luce',                 'bolt',      '#E6B23C', 2),
+    (p_household, 'gas',           'Gas',                  'fire',      '#E07B39', 3),
+    (p_household, 'water',         'Acqua',                'water',     '#3D8FD1', 4),
+    (p_household, 'internet',      'Internet e telefono',  'wifi',      '#7A6FD6', 5),
+    (p_household, 'subscriptions', 'Abbonamenti',          'tv',        '#C75B9B', 6),
+    (p_household, 'rent',          'Affitto',              'house',     '#8C6B4F', 7),
+    (p_household, 'condo',         'Condominio',           'building',  '#5E8C8A', 8),
+    (p_household, 'household',     'Prodotti per la casa', 'cleaning',  '#9BB84A', 9),
+    (p_household, 'maintenance',   'Manutenzione',         'build',     '#B5523B', 10),
+    (p_household, 'other',         'Altro',                'more',      '#8A8F98', 999)
+  on conflict do nothing;
+$$;
+revoke all on function public.seed_categories(uuid) from public, anon, authenticated;
+
+-- Case già esistenti senza categorie: aggiunge quelle predefinite
+do $$
+begin
+  perform public.seed_categories(h.id) from public.households h
+  where not exists (select 1 from public.categories c where c.household_id = h.id);
+end;
+$$;
+
+-- 'Altro' deve esserci sempre (serve come destinazione quando si elimina una categoria)
+insert into public.categories (household_id, key, name, icon, color, position)
+select h.id, 'other', 'Altro', 'more', '#8A8F98', 999 from public.households h
+on conflict do nothing;
+
+-- Eliminando una categoria, i suoi movimenti passano ad 'Altro'
+create or replace function public.before_category_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- casa in eliminazione (cascade): niente da spostare
+  if not exists (select 1 from public.households where id = old.household_id) then
+    return old;
+  end if;
+  if old.key = 'other' then
+    raise exception 'la categoria Altro non si può eliminare';
+  end if;
+  update public.expenses set category = 'other'
+  where household_id = old.household_id and category = old.key;
+  return old;
+end;
+$$;
+
+drop trigger if exists categories_before_delete on public.categories;
+create trigger categories_before_delete
+  before delete on public.categories
+  for each row execute function public.before_category_delete();
+
+-- ---------------------------------------------------------------------
 -- Funzioni di supporto
 -- ---------------------------------------------------------------------
 
@@ -165,6 +242,11 @@ begin
     raise exception 'split_among contiene utenti che non sono membri della casa';
   end if;
 
+  if not exists (select 1 from public.categories
+                 where household_id = new.household_id and key = new.category) then
+    new.category := 'other';
+  end if;
+
   if new.kind = 'settlement' and cardinality(new.split_among) <> 1 then
     raise exception 'un saldo tra membri deve avere un solo destinatario';
   end if;
@@ -205,6 +287,7 @@ begin
   returning * into v_h;
   insert into public.household_members (household_id, user_id, role)
   values (v_h.id, auth.uid(), 'owner');
+  perform public.seed_categories(v_h.id);
   return v_h;
 end;
 $$;
@@ -282,11 +365,13 @@ alter table public.profiles          enable row level security;
 alter table public.households        enable row level security;
 alter table public.household_members enable row level security;
 alter table public.expenses          enable row level security;
+alter table public.categories        enable row level security;
 
 grant select, update on public.profiles to authenticated;
 grant select, update on public.households to authenticated;
 grant select on public.household_members to authenticated;
 grant select, insert, update, delete on public.expenses to authenticated;
+grant select, insert, update, delete on public.categories to authenticated;
 
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles for select to authenticated
@@ -324,17 +409,39 @@ drop policy if exists "expenses_delete" on public.expenses;
 create policy "expenses_delete" on public.expenses for delete to authenticated
   using (public.is_member(household_id));
 
+drop policy if exists "categories_select" on public.categories;
+create policy "categories_select" on public.categories for select to authenticated
+  using (public.is_member(household_id));
+
+drop policy if exists "categories_insert" on public.categories;
+create policy "categories_insert" on public.categories for insert to authenticated
+  with check (public.is_member(household_id));
+
+drop policy if exists "categories_update" on public.categories;
+create policy "categories_update" on public.categories for update to authenticated
+  using (public.is_member(household_id))
+  with check (public.is_member(household_id));
+
+drop policy if exists "categories_delete" on public.categories;
+create policy "categories_delete" on public.categories for delete to authenticated
+  using (public.is_member(household_id) and key <> 'other');
+
 -- ---------------------------------------------------------------------
 -- Realtime: l'app riceve subito le modifiche fatte dagli altri membri
 -- ---------------------------------------------------------------------
 alter table public.expenses replica identity full;
 alter table public.household_members replica identity full;
+alter table public.categories replica identity full;
 
 do $$
 begin
   if not exists (select 1 from pg_publication_tables
                  where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'expenses') then
     alter publication supabase_realtime add table public.expenses;
+  end if;
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'categories') then
+    alter publication supabase_realtime add table public.categories;
   end if;
   if not exists (select 1 from pg_publication_tables
                  where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'household_members') then

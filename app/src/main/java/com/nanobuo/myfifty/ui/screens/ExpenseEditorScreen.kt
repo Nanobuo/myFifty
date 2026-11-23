@@ -16,6 +16,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material3.AssistChip
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,9 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,7 +60,9 @@ import com.nanobuo.myfifty.domain.Money
 import com.nanobuo.myfifty.ui.AppViewModel
 import com.nanobuo.myfifty.ui.components.ConfirmDialog
 import com.nanobuo.myfifty.ui.components.SectionCard
-import com.nanobuo.myfifty.ui.components.icon
+import com.nanobuo.myfifty.ui.components.CategoryDialog
+import com.nanobuo.myfifty.ui.components.iconVector
+import com.nanobuo.myfifty.ui.components.uiColor
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -85,10 +87,20 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
         if (m == null || m == YearMonth.now()) LocalDate.now() else m.atDay(1)
     }
 
-    var kind by rememberSaveable { mutableStateOf(existing?.kindEnum ?: ExpenseKind.EXPENSE) }
+    // I saldi tra membri nascono dalla scheda di fine mese; qui si possono solo correggere.
+    val isSettlement = existing?.kindEnum == ExpenseKind.SETTLEMENT
+    var isRefund by rememberSaveable { mutableStateOf(existing?.kindEnum == ExpenseKind.REFUND) }
+    val kind = when {
+        isSettlement -> ExpenseKind.SETTLEMENT
+        isRefund -> ExpenseKind.REFUND
+        else -> ExpenseKind.EXPENSE
+    }
     var amount by rememberSaveable { mutableStateOf(existing?.let { Money.plain(it.amountCents) } ?: "") }
     var description by rememberSaveable { mutableStateOf(existing?.description ?: "") }
-    var category by rememberSaveable { mutableStateOf(existing?.categoryEnum ?: Category.GROCERIES) }
+    var category by rememberSaveable {
+        mutableStateOf(existing?.category ?: d.categories.firstOrNull { !it.isOther }?.key ?: Category.OTHER)
+    }
+    var newCategory by remember { mutableStateOf(false) }
     var dateStr by rememberSaveable { mutableStateOf(existing?.localDate?.toString() ?: defaultDate.toString()) }
     var paidBy by rememberSaveable { mutableStateOf(existing?.paidBy ?: me) }
     var split by rememberSaveable { mutableStateOf(existing?.splitAmong ?: allIds) }
@@ -124,7 +136,7 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
                 householdId = d.household.id,
                 kind = kind.key,
                 description = description.trim().ifEmpty { if (kind == ExpenseKind.SETTLEMENT) "Saldo" else "" },
-                category = if (kind == ExpenseKind.SETTLEMENT) Category.OTHER.key else category.key,
+                category = if (kind == ExpenseKind.SETTLEMENT) Category.OTHER else category,
                 amountCents = c,
                 date = date.toString(),
                 paidBy = paidBy,
@@ -139,7 +151,15 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (existing == null) "Nuovo movimento" else "Modifica movimento") },
+                title = {
+                    Text(
+                        when {
+                            isSettlement -> "Saldo tra membri"
+                            existing == null -> "Nuova spesa"
+                            else -> "Modifica"
+                        }
+                    )
+                },
                 navigationIcon = { IconButton(onClose) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Indietro") } },
                 actions = {
                     if (existing != null) IconButton({ confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Elimina") }
@@ -152,22 +172,12 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
             Modifier.fillMaxSize().padding(pad).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                ExpenseKind.entries.forEachIndexed { i, k ->
-                    SegmentedButton(kind == k, { kind = k }, SegmentedButtonDefaults.itemShape(i, ExpenseKind.entries.size)) {
-                        Text(if (k == ExpenseKind.SETTLEMENT) "Saldo" else k.label)
-                    }
-                }
+            if (isSettlement) {
+                Text(
+                    "Pagamento registrato per pareggiare i conti di fine mese.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                when (kind) {
-                    ExpenseKind.EXPENSE -> "Una spesa pagata da un membro e divisa tra più persone."
-                    ExpenseKind.REFUND -> "Soldi ricevuti da un membro (es. conguaglio di una bolletta, reso) che spettano a più persone."
-                    ExpenseKind.SETTLEMENT -> "Un membro restituisce dei soldi a un altro."
-                },
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             OutlinedTextField(
                 amount, { amount = it.filter { c -> c.isDigit() || c == ',' || c == '.' }.take(12) },
                 label = { Text("Importo") },
@@ -191,16 +201,33 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
                 Text("  " + date.format(dateFmt).replaceFirstChar { it.uppercase() })
             }
 
-            if (kind != ExpenseKind.SETTLEMENT) {
-                Text("Categoria", style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Category.entries.forEach { c ->
-                        FilterChip(
-                            selected = category == c, onClick = { category = c },
-                            label = { Text(c.label) },
-                            leadingIcon = { Icon(c.icon, null, Modifier.size(18.dp)) },
+            if (!isSettlement) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Outlined.Undo, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text("È un rimborso", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Soldi ricevuti (es. conguaglio di una bolletta, reso) da dividere tra i membri.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    Switch(isRefund, { isRefund = it })
+                }
+
+                Text("Categoria", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    d.categories.forEach { c ->
+                        FilterChip(
+                            selected = category == c.key, onClick = { category = c.key },
+                            label = { Text(c.name) },
+                            leadingIcon = { Icon(c.iconVector, null, Modifier.size(18.dp), tint = c.uiColor) },
+                        )
+                    }
+                    AssistChip(
+                        onClick = { newCategory = true },
+                        label = { Text("Nuova") },
+                        leadingIcon = { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)) },
+                    )
                 }
             }
 
@@ -208,7 +235,7 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
                 when (kind) {
                     ExpenseKind.EXPENSE -> "Pagato da"
                     ExpenseKind.REFUND -> "Ricevuto da"
-                    ExpenseKind.SETTLEMENT -> "Chi paga"
+                    ExpenseKind.SETTLEMENT -> "Da"
                 },
                 style = MaterialTheme.typography.titleSmall,
             )
@@ -219,7 +246,7 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
             }
 
             if (kind == ExpenseKind.SETTLEMENT) {
-                Text("A chi", style = MaterialTheme.typography.titleSmall)
+                Text("A", style = MaterialTheme.typography.titleSmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     d.members.filter { it.id != paidBy }.forEach { m ->
                         FilterChip(recipient == m.id, { recipient = m.id }, label = { Text(m.name) })
@@ -298,6 +325,14 @@ fun ExpenseEditorScreen(vm: AppViewModel, expenseId: String?, month: String?, on
             },
             dismissButton = { TextButton({ showDate = false }) { Text("Annulla") } },
         ) { DatePicker(state) }
+    }
+    if (newCategory) {
+        CategoryDialog(
+            initial = null,
+            existingNames = d.categories.map { it.name },
+            onSave = { c -> vm.saveCategory(c) { key -> category = key } },
+            onDismiss = { newCategory = false },
+        )
     }
     if (confirmDelete && existing != null) {
         ConfirmDialog(

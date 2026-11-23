@@ -11,24 +11,24 @@ Dati salvati su [Supabase](https://supabase.com) e sincronizzati in tempo reale 
 <p align="center">
   <img src="docs/screenshots/1_home-light.png" width="200">
   <img src="docs/screenshots/1_home-dark.png" width="200">
-  <img src="docs/screenshots/2_saldi-dark.png" width="200">
+  <img src="docs/screenshots/4_editor-light.png" width="200">
   <img src="docs/screenshots/3_statistiche-light.png" width="200">
 </p>
 
 ## Funzioni
 
 - **Case e membri**: crea una casa e invita gli altri con un codice di 8 caratteri. Puoi far parte di più case.
-- **Tre tipi di movimento**
-  - *Spesa*: pagata da un membro, divisa in parti uguali tra i membri scelti;
-  - *Rimborso*: soldi ricevuti da un membro (conguaglio bolletta, reso…) che spettano a più persone;
-  - *Saldo*: un membro restituisce soldi a un altro.
+- **Un'unica schermata per i movimenti**: importo, descrizione, data, categoria, chi ha pagato e tra chi
+  dividere. L'interruttore *È un rimborso* serve per i soldi ricevuti (conguaglio bolletta, reso…) che
+  spettano a più persone.
 - **Modificabili in ogni momento**, anche da altri membri (l'app mostra chi ha fatto l'ultima modifica).
-- **Categorie**: alimentari, luce, gas, acqua, internet e telefono, abbonamenti, affitto, condominio,
-  prodotti per la casa, manutenzione, altro.
+- **Categorie personalizzabili**, condivise da tutta la casa: nome, icona e colore. Si aggiungono anche
+  direttamente mentre inserisci una spesa. Eliminando una categoria i suoi movimenti passano ad *Altro*.
 - **Spese ricorrenti** (affitto, internet…): ogni mese l'app propone di ricopiarle.
 - **Vista mensile** con totale, la tua quota, quanto hai pagato e il saldo del mese.
-- **Saldi** complessivi di ogni membro e suggerimento del minor numero di pagamenti per pareggiare,
-  con registrazione del saldo in un tocco.
+- **Saldo di fine mese**: negli ultimi 3 giorni del mese e nei primi 10 del successivo (se il mese non è
+  ancora in pari) compare la scheda *Saldo di …* con il minor numero di pagamenti per pareggiare i conti;
+  *Pagato* li registra.
 - **Statistiche**: andamento mensile, ripartizione per categoria, chi ha pagato cosa, medie;
   per mese, ultimi 12 mesi, anno in corso o tutto.
 - **Sincronizzazione automatica** via Supabase Realtime: quello che inseriscono gli altri compare

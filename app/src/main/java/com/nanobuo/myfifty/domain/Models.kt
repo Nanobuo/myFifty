@@ -24,7 +24,8 @@ data class Member(
 enum class ExpenseKind(val key: String, val label: String) {
     EXPENSE("expense", "Spesa"),
     REFUND("refund", "Rimborso"),
-    SETTLEMENT("settlement", "Saldo tra membri");
+    /** pagamento tra membri per pareggiare i conti (creato dal saldo di fine mese) */
+    SETTLEMENT("settlement", "Saldo");
 
     companion object {
         fun fromKey(key: String): ExpenseKind = entries.firstOrNull { it.key == key } ?: EXPENSE
@@ -38,7 +39,7 @@ data class Expense(
     @SerialName("household_id") val householdId: String,
     val kind: String = ExpenseKind.EXPENSE.key,
     val description: String = "",
-    val category: String = Category.OTHER.key,
+    val category: String = Category.OTHER,
     @SerialName("amount_cents") val amountCents: Long,
     @SerialName("expense_date") val date: String,
     @SerialName("paid_by") val paidBy: String,
@@ -53,7 +54,6 @@ data class Expense(
     val kindEnum: ExpenseKind get() = ExpenseKind.fromKey(kind)
     val localDate: LocalDate get() = LocalDate.parse(date.take(10))
     val yearMonth: YearMonth get() = YearMonth.from(localDate)
-    val categoryEnum: Category get() = Category.fromKey(category)
 }
 
 /** Payload di scrittura (insert / update / upsert). */

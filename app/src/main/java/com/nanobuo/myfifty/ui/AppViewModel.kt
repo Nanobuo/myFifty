@@ -7,6 +7,7 @@ import com.nanobuo.myfifty.data.Repository
 import com.nanobuo.myfifty.data.SettingsStore
 import com.nanobuo.myfifty.data.SupabaseConfig
 import com.nanobuo.myfifty.data.ThemeMode
+import com.nanobuo.myfifty.domain.Category
 import com.nanobuo.myfifty.domain.Expense
 import com.nanobuo.myfifty.domain.ExpenseKind
 import com.nanobuo.myfifty.domain.ExpenseWrite
@@ -45,7 +46,11 @@ data class HouseholdData(
     val members: List<Member> = emptyList(),
     val expenses: List<Expense> = emptyList(),
     val loaded: Boolean = false,
+    val categories: List<Category> = Category.defaults,
 ) {
+    private val categoryByKey: Map<String, Category> by lazy { categories.associateBy { it.key } }
+    fun categoryOf(key: String): Category = categoryByKey[key] ?: Category.unknown(key)
+    val memberIds: List<String> get() = members.map { it.id }
     val memberById: Map<String, Member> by lazy { members.associateBy { it.id } }
     fun nameOf(id: String): String = memberById[id]?.name ?: "Ex membro"
     val balances: Map<String, Long> by lazy { Ledger.balances(expenses, members.map { it.id }) }
@@ -94,11 +99,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val messages = _messages.receiveAsFlow()
 
     private var previewUserId: String? = null
+    private var previewToday: LocalDate? = null
+
+    /** Data odierna (simulabile negli screenshot). */
+    fun today(): LocalDate = previewToday ?: LocalDate.now()
     val myId: String? get() = _repo.value?.currentUserId ?: previewUserId
 
     /** Solo per test e screenshot: mostra dati finti senza Supabase. */
     @androidx.annotation.VisibleForTesting
-    fun showPreview(d: HouseholdData, userId: String) {
+    fun showPreview(d: HouseholdData, userId: String, today: LocalDate? = null) {
+        previewToday = today
         previewUserId = userId
         _data.value = d
         _households.value = listOf(d.household)
@@ -186,9 +196,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _households.value = hh
             val h = hh.firstOrNull { it.id == id } ?: return
             val members = repo.members(id)
+            val categories = repo.categories(id).ifEmpty { Category.defaults }
             val expenses = repo.expenses(id)
             if (_data.value?.household?.id == id) {
-                _data.value = HouseholdData(h, members, expenses, loaded = true)
+                _data.value = HouseholdData(h, members, expenses, loaded = true, categories = categories)
             }
         } catch (t: Throwable) {
             if (t is kotlinx.coroutines.CancellationException) throw t
@@ -305,13 +316,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _messages.send("Aggiunte ${list.size} spese ricorrenti")
     }
 
-    fun recordTransfer(t: Ledger.Transfer) = launchBusy {
+    // ------------------------------------------------------------ categorie
+
+    /** Crea o aggiorna una categoria; restituisce la chiave (utile per selezionarla subito). */
+    fun saveCategory(c: Category, onDone: (String) -> Unit = {}) = launchBusy {
+        val h = _data.value?.household ?: return@launchBusy
+        val cat = c.copy(householdId = h.id, name = c.name.trim().take(40))
+        it.saveCategory(cat)
+        refresh(false)
+        onDone(cat.key)
+    }
+
+    fun deleteCategory(key: String) = launchBusy {
+        val h = _data.value?.household ?: return@launchBusy
+        it.deleteCategory(h.id, key)
+        refresh(false)
+        _messages.send("Categoria eliminata: i suoi movimenti sono ora in \"Altro\"")
+    }
+
+    // ------------------------------------------------------------ saldo di fine mese
+
+    /** Registra un pagamento tra membri datato all'ultimo giorno del mese che si sta saldando. */
+    fun recordTransfer(t: Ledger.Transfer, month: YearMonth) = launchBusy {
         val h = _data.value?.household ?: return@launchBusy
         it.insertExpense(
             ExpenseWrite(
                 id = UUID.randomUUID().toString(), householdId = h.id, kind = ExpenseKind.SETTLEMENT.key,
-                description = "Saldo", category = "other", amountCents = t.amountCents,
-                date = LocalDate.now().toString(), paidBy = t.from, splitAmong = listOf(t.to),
+                description = "Saldo", category = Category.OTHER, amountCents = t.amountCents,
+                // oggi se si salda il mese in corso, altrimenti l'ultimo giorno del mese saldato
+                date = minOf(month.atEndOfMonth(), LocalDate.now()).toString(),
+                paidBy = t.from, splitAmong = listOf(t.to),
                 recurring = false, notes = "",
             )
         )
@@ -321,16 +355,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------ import / export
 
-    fun exportJson(): String? = _data.value?.let { ImportExport.exportJson(it.household, it.members, it.expenses) }
+    fun exportJson(): String? = _data.value?.let { ImportExport.exportJson(it.household, it.members, it.categories, it.expenses) }
 
-    fun exportCsv(): String? = _data.value?.let { ImportExport.exportCsv(it.members, it.expenses) }
+    fun exportCsv(): String? = _data.value?.let { ImportExport.exportCsv(it.members, it.categories, it.expenses) }
 
     fun prepareImport(text: String): Result<ImportExport.ImportResult> = runCatching {
         val d = requireNotNull(_data.value) { "Nessuna casa selezionata" }
-        ImportExport.parse(text, d.household, d.members, d.expenses)
+        ImportExport.parse(text, d.household, d.members, d.categories, d.expenses)
     }
 
     fun applyImport(result: ImportExport.ImportResult) = launchBusy {
+        it.insertCategories(result.newCategories)
         it.upsertExpenses(result.toWrite)
         refresh(false)
         _messages.send("Import completato: ${result.newCount} nuovi, ${result.updatedCount} aggiornati")

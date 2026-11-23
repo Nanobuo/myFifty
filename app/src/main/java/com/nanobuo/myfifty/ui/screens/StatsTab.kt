@@ -97,7 +97,7 @@ fun StatsTab(vm: AppViewModel, d: HouseholdData) {
                 }
                 summary.largest?.let { e ->
                     Text(
-                        "Spesa più alta: ${e.description.ifBlank { e.categoryEnum.label }} · ${Money.format(e.amountCents, cur)}",
+                        "Spesa più alta: ${e.description.ifBlank { d.categoryOf(e.category).name }} · ${Money.format(e.amountCents, cur)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -108,14 +108,15 @@ fun StatsTab(vm: AppViewModel, d: HouseholdData) {
         }
         item {
             SectionCard(title = "Per categoria") {
-                CategoryDonut(summary.byCategory, cur, Modifier.fillMaxWidth())
+                CategoryDonut(summary.byCategory.map { d.categoryOf(it.first) to it.second }, cur, Modifier.fillMaxWidth())
                 val maxCat = summary.byCategory.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
-                summary.byCategory.forEach { (c, v) ->
+                summary.byCategory.forEach { (key, v) ->
+                    val c = d.categoryOf(key)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                         CategoryBadge(c, 32.dp)
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Row {
-                                Text(c.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Text(c.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                                 Text(Money.format(v, cur), style = MaterialTheme.typography.labelLarge)
                             }
                             HBar(v.toFloat() / maxCat, c.uiColor, Modifier.padding(top = 4.dp))

@@ -17,7 +17,7 @@ import com.nanobuo.myfifty.domain.Member
 import com.nanobuo.myfifty.ui.AppViewModel
 import com.nanobuo.myfifty.ui.HouseholdData
 import com.nanobuo.myfifty.ui.screens.AuthScreen
-import com.nanobuo.myfifty.ui.screens.BalancesTab
+import com.nanobuo.myfifty.ui.screens.SettingsTab
 import com.nanobuo.myfifty.ui.screens.ExpenseEditorScreen
 import com.nanobuo.myfifty.ui.screens.HomeScreen
 import com.nanobuo.myfifty.ui.screens.StatsTab
@@ -68,13 +68,15 @@ class ScreenshotTest {
             list += e("expense", "Bolletta gas", "gas", 6000L + (i % 4) * 2500, d(mm, 12), "b")
             list += e("expense", "Fibra", "internet", 2990, d(mm, 1), "a")
         }
+        // un saldo di fine mese ancora aperto per il mese precedente
+        list += e("expense", "Spesa grande", "groceries", 30000, d(prev, 20), "a")
         return HouseholdData(h, m, list, loaded = true)
     }
 
     private fun shot(name: String, dark: Boolean, content: @androidx.compose.runtime.Composable (AppViewModel) -> Unit) {
         if (!enabled) return
         val vm = AppViewModel(ApplicationProvider.getApplicationContext<Application>())
-        vm.showPreview(sample(), "a")
+        vm.showPreview(sample(), "a", today = LocalDate.now().withDayOfMonth(3))
         rule.setContent {
             MyFiftyTheme(dark = dark) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Box { content(vm) } }
@@ -90,7 +92,7 @@ class ScreenshotTest {
 
     @Test fun homeLight() = shot("1_home", false) { HomeScreen(it, {}, {}, {}) }
     @Test fun homeDark() = shot("1_home", true) { HomeScreen(it, {}, {}, {}) }
-    @Test fun balances() = shot("2_saldi", true) { vm -> BalancesTab(vm, sample()) }
+    @Test fun settings() = shot("2_altro", true) { vm -> SettingsTab(vm, sample()) {} }
     @Test fun stats() = shot("3_statistiche", false) { vm -> StatsTab(vm, sample()) }
     @Test fun editor() = shot("4_editor", false) { vm -> ExpenseEditorScreen(vm, null, null) {} }
     @Test fun auth() = shot("0_login", true) { vm -> AuthScreen(vm) }

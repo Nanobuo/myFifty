@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -48,7 +47,6 @@ import java.time.YearMonth
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     MONTH("Movimenti", Icons.AutoMirrored.Outlined.ReceiptLong),
-    BALANCES("Saldi", Icons.Outlined.AccountBalanceWallet),
     STATS("Statistiche", Icons.Outlined.BarChart),
     SETTINGS("Altro", Icons.Outlined.Settings),
 }
@@ -142,7 +140,6 @@ fun HomeScreen(
             if (d == null) return@PullToRefreshBox
             when (current) {
                 Tab.MONTH -> MonthTab(vm, d, month, { monthStr = it.toString() }, onOpenExpense)
-                Tab.BALANCES -> BalancesTab(vm, d)
                 Tab.STATS -> StatsTab(vm, d)
                 Tab.SETTINGS -> SettingsTab(vm, d, onAddHousehold)
             }

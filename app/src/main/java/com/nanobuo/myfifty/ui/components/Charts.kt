@@ -102,7 +102,7 @@ fun CategoryDonut(items: List<Pair<Category, Long>>, currency: String, modifier:
                 positive.forEach { (c, v) ->
                     val sweep = 360f * v / total
                     drawArc(
-                        Color(c.color), start, sweep, false,
+                        c.uiColor, start, sweep, false,
                         topLeft = Offset(inset, inset), size = Size(size.width - stroke, size.height - stroke),
                         style = Stroke(stroke),
                     )
@@ -119,9 +119,9 @@ fun CategoryDonut(items: List<Pair<Category, Long>>, currency: String, modifier:
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             positive.take(8).forEach { (c, v) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color(c.color)))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(c.uiColor))
                     Text(
-                        c.label, Modifier.weight(1f).padding(start = 8.dp),
+                        c.name, Modifier.weight(1f).padding(start = 8.dp),
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                     Text(if (v * 100 / total == 0L) "<1%" else "${v * 100 / total}%", style = MaterialTheme.typography.labelMedium)

@@ -1,5 +1,6 @@
 package com.nanobuo.myfifty.data
 
+import com.nanobuo.myfifty.domain.Category
 import com.nanobuo.myfifty.domain.Expense
 import com.nanobuo.myfifty.domain.ExpenseWrite
 import com.nanobuo.myfifty.domain.Household
@@ -135,6 +136,30 @@ class Repository(val config: SupabaseConfig) {
             .map { Member(it.userId, it.profiles?.displayName?.ifBlank { null } ?: "Membro", it.role) }
             .sortedBy { it.name.lowercase() }
 
+    // ---------------- Categorie ----------------
+
+    suspend fun categories(householdId: String): List<Category> =
+        client.from("categories").select {
+            filter { eq("household_id", householdId) }
+            order("position", Order.ASCENDING)
+            order("name", Order.ASCENDING)
+        }.decodeList()
+
+    suspend fun saveCategory(c: Category) {
+        client.from("categories").upsert(c)
+    }
+
+    suspend fun insertCategories(list: List<Category>) {
+        if (list.isNotEmpty()) client.from("categories").upsert(list)
+    }
+
+    /** I movimenti della categoria passano ad "Altro" (trigger lato server). */
+    suspend fun deleteCategory(householdId: String, key: String) {
+        client.from("categories").delete {
+            filter { eq("household_id", householdId); eq("key", key) }
+        }
+    }
+
     // ---------------- Movimenti ----------------
 
     suspend fun expenses(householdId: String): List<Expense> {
@@ -190,7 +215,14 @@ class Repository(val config: SupabaseConfig) {
             table = "household_members"
             filter("household_id", FilterOperator.EQ, householdId)
         }
-        val job = launch { merge(expenses, deletes, members).collect { trySend(Unit) } }
+        val categories = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            table = "categories"
+            filter("household_id", FilterOperator.EQ, householdId)
+        }
+        val categoryDeletes = channel.postgresChangeFlow<PostgresAction.Delete>(schema = "public") {
+            table = "categories"
+        }
+        val job = launch { merge(expenses, deletes, members, categories, categoryDeletes).collect { trySend(Unit) } }
         runCatching { channel.subscribe() }
         awaitClose {
             job.cancel()

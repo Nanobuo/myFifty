@@ -22,6 +22,20 @@ import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.WaterDrop
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Pets
+import androidx.compose.material.icons.outlined.LocalHospital
+import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.outlined.Flight
+import androidx.compose.material.icons.outlined.ChildCare
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.LocalBar
+import androidx.compose.material.icons.outlined.LocalFlorist
+import androidx.compose.material.icons.outlined.LocalLaundryService
+import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -54,25 +68,42 @@ fun Logo(size: Dp, modifier: Modifier = Modifier) {
     Image(painterResource(res), contentDescription = "myFifty", modifier = modifier.size(size).clip(CircleShape))
 }
 
-val Category.icon: ImageVector
-    get() = when (this) {
-        Category.GROCERIES -> Icons.Outlined.ShoppingCart
-        Category.ELECTRICITY -> Icons.Outlined.Bolt
-        Category.GAS -> Icons.Outlined.LocalFireDepartment
-        Category.WATER -> Icons.Outlined.WaterDrop
-        Category.INTERNET -> Icons.Outlined.Wifi
-        Category.SUBSCRIPTIONS -> Icons.Outlined.Subscriptions
-        Category.RENT -> Icons.Outlined.House
-        Category.CONDO -> Icons.Outlined.Apartment
-        Category.HOUSEHOLD -> Icons.Outlined.CleaningServices
-        Category.MAINTENANCE -> Icons.Outlined.Build
-        Category.OTHER -> Icons.Outlined.MoreHoriz
-    }
+/** Icone disponibili per le categorie (la chiave è salvata su Supabase). */
+val CategoryIcons: List<Pair<String, ImageVector>> = listOf(
+    "cart" to Icons.Outlined.ShoppingCart,
+    "bolt" to Icons.Outlined.Bolt,
+    "fire" to Icons.Outlined.LocalFireDepartment,
+    "water" to Icons.Outlined.WaterDrop,
+    "wifi" to Icons.Outlined.Wifi,
+    "tv" to Icons.Outlined.Subscriptions,
+    "house" to Icons.Outlined.House,
+    "building" to Icons.Outlined.Apartment,
+    "cleaning" to Icons.Outlined.CleaningServices,
+    "build" to Icons.Outlined.Build,
+    "restaurant" to Icons.Outlined.Restaurant,
+    "car" to Icons.Outlined.DirectionsCar,
+    "pets" to Icons.Outlined.Pets,
+    "health" to Icons.Outlined.LocalHospital,
+    "gift" to Icons.Outlined.CardGiftcard,
+    "sport" to Icons.Outlined.FitnessCenter,
+    "travel" to Icons.Outlined.Flight,
+    "baby" to Icons.Outlined.ChildCare,
+    "school" to Icons.Outlined.School,
+    "phone" to Icons.Outlined.PhoneAndroid,
+    "drink" to Icons.Outlined.LocalBar,
+    "plant" to Icons.Outlined.LocalFlorist,
+    "laundry" to Icons.Outlined.LocalLaundryService,
+    "tag" to Icons.Outlined.Sell,
+    "more" to Icons.Outlined.MoreHoriz,
+)
+private val iconByKey = CategoryIcons.toMap()
 
-val Category.uiColor: Color get() = Color(color)
+val Category.iconVector: ImageVector get() = iconByKey[icon] ?: Icons.Outlined.Sell
+
+val Category.uiColor: Color get() = Color(argb)
 
 @Composable
-fun CategoryBadge(category: Category, size: Dp = 40.dp, icon: ImageVector = category.icon) {
+fun CategoryBadge(category: Category, size: Dp = 40.dp, icon: ImageVector = category.iconVector) {
     Box(
         Modifier.size(size).clip(CircleShape).background(category.uiColor.copy(alpha = 0.18f)),
         contentAlignment = Alignment.Center,

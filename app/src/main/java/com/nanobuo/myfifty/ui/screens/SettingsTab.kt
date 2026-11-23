@@ -59,6 +59,11 @@ import com.nanobuo.myfifty.io.ImportExport
 import com.nanobuo.myfifty.ui.AppViewModel
 import com.nanobuo.myfifty.ui.HouseholdData
 import com.nanobuo.myfifty.ui.components.Avatar
+import com.nanobuo.myfifty.ui.components.CategoryBadge
+import com.nanobuo.myfifty.ui.components.CategoryDialog
+import com.nanobuo.myfifty.domain.Category
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.Add
 import com.nanobuo.myfifty.ui.components.ConfirmDialog
 import com.nanobuo.myfifty.ui.components.Logo
 import com.nanobuo.myfifty.ui.components.SectionCard
@@ -78,6 +83,9 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
 
     var dialog by remember { mutableStateOf<String?>(null) }
     var importPreview by remember { mutableStateOf<ImportExport.ImportResult?>(null) }
+    var editCategory by remember { mutableStateOf<Category?>(null) }
+    var addCategory by remember { mutableStateOf(false) }
+    val usage = remember(d.expenses) { d.expenses.groupingBy { it.category }.eachCount() }
 
     val safeName = h.name.replace(Regex("[^A-Za-z0-9]+"), "_").trim('_').ifEmpty { "casa" }
     val stamp = LocalDate.now().toString()
@@ -155,6 +163,31 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
                 TextButton(onAddHousehold) { Text("Crea o entra in un'altra casa") }
             }
         }
+        // ---------------- categorie
+        item {
+            SectionCard(title = "Categorie") {
+                d.categories.forEach { c ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { editCategory = c }.padding(vertical = 4.dp),
+                    ) {
+                        CategoryBadge(c, 34.dp)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(c.name)
+                            val n = usage[c.key] ?: 0
+                            Text(
+                                if (n == 1) "1 movimento" else "$n movimenti",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(Icons.Outlined.Edit, "Modifica", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                TextButton({ addCategory = true }) {
+                    Icon(Icons.Outlined.Add, null); Text("  Aggiungi categoria")
+                }
+            }
+        }
         // ---------------- tema
         item {
             SectionCard(title = "Aspetto") {
@@ -216,6 +249,24 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
         )
     }
 
+    if (addCategory) {
+        CategoryDialog(
+            initial = null,
+            existingNames = d.categories.map { it.name },
+            onSave = { vm.saveCategory(it) },
+            onDismiss = { addCategory = false },
+        )
+    }
+    editCategory?.let { c ->
+        CategoryDialog(
+            initial = c,
+            existingNames = d.categories.map { it.name },
+            onSave = { vm.saveCategory(it) },
+            onDelete = if (c.isOther) null else ({ vm.deleteCategory(c.key) }),
+            onDismiss = { editCategory = null },
+        )
+    }
+
     importPreview?.let { r ->
         AlertDialog(
             onDismissRequest = { importPreview = null },
@@ -224,6 +275,7 @@ fun SettingsTab(vm: AppViewModel, d: HouseholdData, onAddHousehold: () -> Unit) 
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Nuovi: ${r.newCount}")
                     Text("Da aggiornare: ${r.updatedCount}")
+                    if (r.newCategories.isNotEmpty()) Text("Nuove categorie: " + r.newCategories.joinToString { it.name })
                     if (r.skipped.isNotEmpty()) {
                         Text("Scartati: ${r.skipped.size}", color = MaterialTheme.colorScheme.error)
                         r.skipped.take(20).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }

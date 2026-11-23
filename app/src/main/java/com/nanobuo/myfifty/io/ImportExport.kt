@@ -7,6 +7,7 @@ import com.nanobuo.myfifty.domain.ExpenseWrite
 import com.nanobuo.myfifty.domain.Household
 import com.nanobuo.myfifty.domain.Member
 import com.nanobuo.myfifty.domain.Money
+import com.nanobuo.myfifty.domain.resolve
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -29,6 +30,9 @@ object ImportExport {
     data class ExportHousehold(val id: String, val name: String, val currency: String)
 
     @Serializable
+    data class ExportCategory(val key: String, val name: String, val icon: String = "tag", val color: String = "#8A8F98")
+
+    @Serializable
     data class ExportExpense(
         val id: String,
         val kind: String,
@@ -49,6 +53,7 @@ object ImportExport {
         val exportedAt: String,
         val household: ExportHousehold,
         val members: List<ExportMember>,
+        val categories: List<ExportCategory> = emptyList(),
         val expenses: List<ExportExpense>,
     )
 
@@ -56,6 +61,8 @@ object ImportExport {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
 
     data class ImportResult(
+        /** categorie da creare prima di scrivere i movimenti */
+        val newCategories: List<Category>,
         val toWrite: List<ExpenseWrite>,
         val newCount: Int,
         val updatedCount: Int,
@@ -64,13 +71,14 @@ object ImportExport {
 
     // ------------------------------------------------------------- export
 
-    fun exportJson(h: Household, members: List<Member>, expenses: List<Expense>): String =
+    fun exportJson(h: Household, members: List<Member>, categories: List<Category>, expenses: List<Expense>): String =
         json.encodeToString(
             ExportFile.serializer(),
             ExportFile(
                 exportedAt = Instant.now().toString(),
                 household = ExportHousehold(h.id, h.name, h.currency),
                 members = members.map { ExportMember(it.id, it.name) },
+                categories = categories.map { ExportCategory(it.key, it.name, it.icon, it.color) },
                 expenses = expenses.map {
                     ExportExpense(it.id, it.kind, it.description, it.category, it.amountCents, it.date.take(10),
                         it.paidBy, it.splitAmong, it.recurring, it.notes.orEmpty())
@@ -80,8 +88,9 @@ object ImportExport {
 
     val CSV_HEADER = listOf("id", "data", "tipo", "descrizione", "categoria", "importo", "pagato_da", "diviso_tra", "ricorrente", "note")
 
-    fun exportCsv(members: List<Member>, expenses: List<Expense>): String {
+    fun exportCsv(members: List<Member>, categories: List<Category>, expenses: List<Expense>): String {
         val names = members.associate { it.id to it.name }
+        val catNames = categories.associate { it.key to it.name }
         val sb = StringBuilder()
         sb.append('\uFEFF') // BOM: Excel riconosce l'UTF-8
         sb.append(CSV_HEADER.joinToString(";")).append("\r\n")
@@ -91,7 +100,7 @@ object ImportExport {
                 e.date.take(10),
                 e.kindEnum.label,
                 e.description,
-                e.categoryEnum.label,
+                catNames[e.category] ?: Category.unknown(e.category).name,
                 Money.plain(e.amountCents),
                 names[e.paidBy] ?: e.paidBy,
                 e.splitAmong.joinToString("|") { names[it] ?: it },
@@ -108,10 +117,39 @@ object ImportExport {
 
     // ------------------------------------------------------------- import
 
-    fun parse(text: String, household: Household, members: List<Member>, existing: List<Expense>): ImportResult {
+    fun parse(
+        text: String,
+        household: Household,
+        members: List<Member>,
+        categories: List<Category>,
+        existing: List<Expense>,
+    ): ImportResult {
         val t = text.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
-        return if (t.startsWith("{")) parseJson(t, household, members, existing)
-        else parseCsv(t, household, members, existing)
+        val cats = CategoryResolver(household.id, categories)
+        return if (t.startsWith("{")) parseJson(t, household, members, cats, existing)
+        else parseCsv(t, household, members, cats, existing)
+    }
+
+    /** Trova le categorie per chiave/nome e crea quelle che mancano (una sola volta). */
+    private class CategoryResolver(val householdId: String, existing: List<Category>) {
+        private val all = existing.toMutableList()
+        val created = mutableListOf<Category>()
+
+        fun keyFor(name: String, icon: String = "tag", color: String? = null, preferredKey: String? = null): String {
+            if (name.isBlank()) return Category.OTHER
+            preferredKey?.let { k -> all.firstOrNull { it.key == k && it.name.equals(name.trim(), true) }?.let { return it.key } }
+            all.resolve(name)?.let { return it.key }
+            val c = Category(
+                householdId = householdId,
+                key = Category.newKey(),
+                name = name.trim().take(40),
+                icon = icon,
+                color = color ?: Category.palette[(all.size) % Category.palette.size],
+                position = 100 + all.size,
+            )
+            all += c; created += c
+            return c.key
+        }
     }
 
     private fun memberResolver(members: List<Member>): (String) -> String? {
@@ -120,7 +158,7 @@ object ImportExport {
         return { key -> byId[key.trim()]?.id ?: byName[key.trim().lowercase()]?.id }
     }
 
-    private fun parseJson(text: String, h: Household, members: List<Member>, existing: List<Expense>): ImportResult {
+    private fun parseJson(text: String, h: Household, members: List<Member>, cats: CategoryResolver, existing: List<Expense>): ImportResult {
         val file = json.decodeFromString(ExportFile.serializer(), text)
         require(file.format == FORMAT) { "File non riconosciuto" }
         val resolve = memberResolver(members)
@@ -129,6 +167,12 @@ object ImportExport {
         fun map(id: String): String? = resolve(id) ?: exportedNames[id]?.let(resolve)
 
         val sameHousehold = file.household.id == h.id
+        val exportedCats = file.categories.associateBy { it.key }
+        fun categoryKey(key: String): String {
+            val ec = exportedCats[key] ?: return Category.defaults.firstOrNull { it.key == key }?.let { cats.keyFor(it.name, it.icon, it.color, it.key) }
+                ?: Category.OTHER
+            return cats.keyFor(ec.name, ec.icon, ec.color, ec.key)
+        }
         val existingIds = existing.map { it.id }.toSet()
         val skipped = mutableListOf<String>()
         val out = mutableListOf<ExpenseWrite>()
@@ -144,13 +188,13 @@ object ImportExport {
             val id = if (sameHousehold) e.id else UUID.randomUUID().toString()
             if (id in existingIds) updated++
             out += ExpenseWrite(id, h.id, ExpenseKind.fromKey(e.kind).key, e.description.take(120),
-                Category.fromKey(e.category).key, e.amountCents, LocalDate.parse(e.date.take(10)).toString(),
+                categoryKey(e.category), e.amountCents, LocalDate.parse(e.date.take(10)).toString(),
                 payer, split.filterNotNull().distinct(), e.recurring, e.notes.take(500))
         }
-        return ImportResult(out, out.size - updated, updated, skipped)
+        return ImportResult(cats.created, out, out.size - updated, updated, skipped)
     }
 
-    private fun parseCsv(text: String, h: Household, members: List<Member>, existing: List<Expense>): ImportResult {
+    private fun parseCsv(text: String, h: Household, members: List<Member>, cats: CategoryResolver, existing: List<Expense>): ImportResult {
         val rows = parseCsvRows(text)
         require(rows.isNotEmpty()) { "File vuoto" }
         val header = rows.first().map { it.trim().lowercase() }
@@ -196,7 +240,7 @@ object ImportExport {
                 householdId = h.id,
                 kind = kind.key,
                 description = get(iDesc).take(120),
-                category = Category.parse(get(iCat)).key,
+                category = cats.keyFor(get(iCat)),
                 amountCents = cents,
                 date = date.toString(),
                 paidBy = payer,
@@ -205,7 +249,7 @@ object ImportExport {
                 notes = get(iNotes).take(500),
             )
         }
-        return ImportResult(out, out.size - updated, updated, skipped)
+        return ImportResult(cats.created, out, out.size - updated, updated, skipped)
     }
 
     private val dateFormats = listOf(

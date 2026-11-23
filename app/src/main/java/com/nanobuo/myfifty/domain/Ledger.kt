@@ -76,7 +76,8 @@ object Ledger {
 
     data class Summary(
         val totalCents: Long,
-        val byCategory: List<Pair<Category, Long>>,
+        /** chiave categoria -> totale netto, in ordine decrescente */
+        val byCategory: List<Pair<String, Long>>,
         /** quanto ciascuno ha effettivamente pagato (spese pagate − rimborsi incassati) */
         val paidBy: Map<String, Long>,
         /** la quota di costo di ciascuno (la sua parte delle spese − parte dei rimborsi) */
@@ -87,7 +88,7 @@ object Ledger {
 
     fun summary(expenses: List<Expense>): Summary {
         val costs = expenses.filter { it.kindEnum != ExpenseKind.SETTLEMENT }
-        val byCat = costs.groupBy { it.categoryEnum }
+        val byCat = costs.groupBy { it.category }
             .mapValues { (_, l) -> l.sumOf { netCost(it) } }
             .filterValues { it != 0L }
             .toList().sortedByDescending { it.second }
@@ -112,5 +113,34 @@ object Ledger {
     fun monthlyTotals(expenses: List<Expense>, months: List<YearMonth>): List<Pair<YearMonth, Long>> {
         val grouped = expenses.groupBy { it.yearMonth }
         return months.map { m -> m to (grouped[m]?.sumOf { netCost(it) } ?: 0L) }
+    }
+}
+
+/** Saldo di fine mese: chi deve dare cosa a chi, considerando tutto fino all'ultimo giorno del mese. */
+object MonthlySettlement {
+    fun closingBalances(expenses: List<Expense>, month: YearMonth, memberIds: Collection<String>): Map<String, Long> =
+        Ledger.balances(expenses.filter { !it.yearMonth.isAfter(month) }, memberIds)
+
+    fun transfers(expenses: List<Expense>, month: YearMonth, memberIds: Collection<String>): List<Ledger.Transfer> =
+        Ledger.settleUp(closingBalances(expenses, month, memberIds))
+
+    /**
+     * Quale mese proporre di saldare oggi, o null:
+     *  - negli ultimi [lastDays] giorni del mese: il mese corrente;
+     *  - nei primi [firstDays] giorni: il mese precedente, se non è già in pari.
+     */
+    fun monthToSettle(
+        expenses: List<Expense>,
+        memberIds: Collection<String>,
+        today: java.time.LocalDate,
+        lastDays: Int = 3,
+        firstDays: Int = 10,
+    ): YearMonth? {
+        val current = YearMonth.from(today)
+        if (today.dayOfMonth > current.lengthOfMonth() - lastDays &&
+            transfers(expenses, current, memberIds).isNotEmpty()) return current
+        val prev = current.minusMonths(1)
+        if (today.dayOfMonth <= firstDays && transfers(expenses, prev, memberIds).isNotEmpty()) return prev
+        return null
     }
 }

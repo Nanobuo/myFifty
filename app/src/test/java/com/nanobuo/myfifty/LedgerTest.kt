@@ -1,6 +1,8 @@
 package com.nanobuo.myfifty
 
+import com.nanobuo.myfifty.domain.Category
 import com.nanobuo.myfifty.domain.Expense
+import com.nanobuo.myfifty.domain.MonthlySettlement
 import com.nanobuo.myfifty.domain.Household
 import com.nanobuo.myfifty.domain.Ledger
 import com.nanobuo.myfifty.domain.Member
@@ -11,10 +13,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.YearMonth
 
 class LedgerTest {
     private val h = Household("h1", "Casa", "ABCD2345")
+    private val cats = Category.defaults + Category(key = "c_pets", name = "Animali", icon = "pets", color = "#AA5500")
     private val members = listOf(Member("a", "Anna"), Member("b", "Bruno"), Member("c", "Carla"))
 
     private fun e(id: String, kind: String, cents: Long, paid: String, split: List<String>, date: String = "2026-11-05", rec: Boolean = false, desc: String = "x") =
@@ -83,8 +87,8 @@ class LedgerTest {
 
     @Test fun jsonRoundTripKeepsIdsInSameHousehold() {
         val list = listOf(e("11111111-1111-1111-1111-111111111111", "expense", 1234, "a", listOf("a", "b")))
-        val json = ImportExport.exportJson(h, members, list)
-        val r = ImportExport.parse(json, h, members, list)
+        val json = ImportExport.exportJson(h, members, cats, list)
+        val r = ImportExport.parse(json, h, members, cats, list)
         assertEquals(1, r.toWrite.size)
         assertEquals(1, r.updatedCount)
         assertEquals(list[0].id, r.toWrite[0].id)
@@ -92,10 +96,10 @@ class LedgerTest {
 
     @Test fun jsonImportIntoOtherHouseholdMapsByName() {
         val list = listOf(e("x1", "expense", 1234, "a", listOf("a", "b")))
-        val json = ImportExport.exportJson(h, members, list)
+        val json = ImportExport.exportJson(h, members, cats, list)
         val other = Household("h2", "Altra")
         val otherMembers = listOf(Member("z", "anna"), Member("y", "Bruno"))
-        val r = ImportExport.parse(json, other, otherMembers, emptyList())
+        val r = ImportExport.parse(json, other, otherMembers, Category.defaults, emptyList())
         assertEquals(1, r.newCount)
         assertEquals("z", r.toWrite[0].paidBy)
         assertEquals(setOf("z", "y"), r.toWrite[0].splitAmong.toSet())
@@ -107,8 +111,8 @@ class LedgerTest {
             e("e1", "expense", 1234, "a", listOf("a", "b"), desc = "Spesa; \"grande\""),
             e("e2", "settlement", 500, "b", listOf("a"), desc = "Saldo"),
         )
-        val csv = ImportExport.exportCsv(members, list)
-        val r = ImportExport.parse(csv, h, members, list)
+        val csv = ImportExport.exportCsv(members, cats, list)
+        val r = ImportExport.parse(csv, h, members, cats, list)
         assertTrue(r.skipped.toString(), r.skipped.isEmpty())
         assertEquals(2, r.updatedCount)
         assertEquals("Spesa; \"grande\"", r.toWrite[0].description)
@@ -117,11 +121,43 @@ class LedgerTest {
 
     @Test fun csvMinimalWithNegativeAmountIsRefund() {
         val csv = "data,importo,pagato_da,descrizione\n05/11/2026,\"-12,50\",Carla,Conguaglio\n2026-11-06,10,Pippo,x\n"
-        val r = ImportExport.parse(csv, h, members, emptyList())
+        val r = ImportExport.parse(csv, h, members, cats, emptyList())
         assertEquals(1, r.toWrite.size)
         assertEquals("refund", r.toWrite[0].kind)
         assertEquals(1250L, r.toWrite[0].amountCents)
         assertEquals(3, r.toWrite[0].splitAmong.size)
         assertEquals(1, r.skipped.size)
+    }
+
+    @Test fun importCreatesUnknownCategoriesOnce() {
+        val csv = "data;importo;pagato_da;categoria\n2026-11-01;10;Anna;Palestra\n2026-11-02;5;Anna;palestra\n2026-11-03;7;Anna;Animali\n2026-11-04;3;Anna;\n"
+        val r = ImportExport.parse(csv, h, members, cats, emptyList())
+        assertEquals(listOf("Palestra"), r.newCategories.map { it.name })
+        val gym = r.newCategories[0].key
+        assertEquals(listOf(gym, gym, "c_pets", "other"), r.toWrite.map { it.category })
+    }
+
+    @Test fun jsonCarriesCustomCategoriesToAnotherHousehold() {
+        val list = listOf(e("x1", "expense", 1234, "a", listOf("a", "b")).copy(category = "c_pets"))
+        val json = ImportExport.exportJson(h, members, cats, list)
+        val r = ImportExport.parse(json, Household("h2", "Altra"), members, Category.defaults, emptyList())
+        assertEquals("Animali", r.newCategories.single().name)
+        assertEquals(r.newCategories.single().key, r.toWrite.single().category)
+    }
+
+    @Test fun monthlySettlementWindow() {
+        val ids = members.map { it.id }
+        val list = listOf(e("1", "expense", 9000, "a", ids, date = "2026-10-10"))
+        // 5 novembre: si propone ottobre (non saldato)
+        assertEquals(YearMonth.of(2026, 10), MonthlySettlement.monthToSettle(list, ids, LocalDate.of(2026, 11, 5)))
+        // metà mese: niente
+        assertNull(MonthlySettlement.monthToSettle(list, ids, LocalDate.of(2026, 11, 15)))
+        // fine novembre: si propone novembre (i debiti si sommano)
+        assertEquals(YearMonth.of(2026, 11), MonthlySettlement.monthToSettle(list, ids, LocalDate.of(2026, 11, 29)))
+        // dopo i pagamenti suggeriti, ottobre è in pari
+        val paid = MonthlySettlement.transfers(list, YearMonth.of(2026, 10), ids).mapIndexed { i, t ->
+            e("s$i", "settlement", t.amountCents, t.from, listOf(t.to), date = "2026-10-31")
+        }
+        assertNull(MonthlySettlement.monthToSettle(list + paid, ids, LocalDate.of(2026, 11, 5)))
     }
 }

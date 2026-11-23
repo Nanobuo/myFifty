@@ -24,11 +24,13 @@ Lo script crea:
 | `households` | le case, ognuna con un codice invito di 8 caratteri |
 | `household_members` | chi fa parte di quale casa |
 | `expenses` | spese, rimborsi e saldi tra membri (importi in centesimi) |
+| `categories` | categorie di ogni casa (le predefinite vengono create con la casa) |
 | `create_household`, `join_household`, `regenerate_invite_code`, `leave_household` | funzioni chiamate dall'app |
 | Policy RLS | ogni utente vede e modifica **solo** i dati delle case di cui fa parte |
 | Pubblicazione realtime | le modifiche degli altri membri arrivano subito sul telefono |
 
-Lo script si può rilanciare in sicurezza (ad esempio dopo un aggiornamento dell'app): non cancella dati.
+Lo script si può rilanciare in sicurezza: non cancella dati. **Rilancialo ogni volta che aggiorni
+l'app** a una versione che modifica il database (lo trovi indicato nelle note di rilascio).
 
 ## 3. Autenticazione
 

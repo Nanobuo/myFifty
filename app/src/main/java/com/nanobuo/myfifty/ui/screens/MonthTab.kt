@@ -37,6 +37,7 @@ import com.nanobuo.myfifty.domain.Expense
 import com.nanobuo.myfifty.domain.ExpenseKind
 import com.nanobuo.myfifty.domain.Ledger
 import com.nanobuo.myfifty.domain.Money
+import com.nanobuo.myfifty.domain.MonthlySettlement
 import com.nanobuo.myfifty.domain.Recurring
 import com.nanobuo.myfifty.ui.AppViewModel
 import com.nanobuo.myfifty.ui.HouseholdData
@@ -67,6 +68,12 @@ fun MonthTab(
     val summary = remember(monthExpenses) { Ledger.summary(monthExpenses) }
     val monthBalance = remember(monthExpenses, me) { me?.let { Ledger.balances(monthExpenses)[it] } ?: 0L }
     val pending = remember(d.expenses, month) { Recurring.pending(d.expenses, month) }
+    val settle = remember(d.expenses, d.members, month) {
+        val target = MonthlySettlement.monthToSettle(d.expenses, d.memberIds, vm.today())
+        if (target != null && (month == YearMonth.from(vm.today()) || month == target))
+            target to MonthlySettlement.transfers(d.expenses, target, d.memberIds)
+        else null
+    }
     val byDay = remember(monthExpenses) { monthExpenses.groupBy { it.localDate }.toSortedMap(compareByDescending { it }) }
 
     LazyColumn(
@@ -101,6 +108,9 @@ fun MonthTab(
                 }
             }
         }
+        settle?.let { (m, transfers) ->
+            if (transfers.isNotEmpty()) item(key = "settle") { SettlementCard(vm, d, m, transfers) }
+        }
         if (pending.isNotEmpty()) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
@@ -109,7 +119,7 @@ fun MonthTab(
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(if (pending.size == 1) "1 spesa ricorrente da aggiungere" else "${pending.size} spese ricorrenti da aggiungere", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                pending.joinToString { it.description.ifBlank { it.categoryEnum.label } },
+                                pending.joinToString { it.description.ifBlank { d.categoryOf(it.category).name } },
                                 style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -122,7 +132,7 @@ fun MonthTab(
             item {
                 EmptyState(
                     "Nessun movimento a ${monthLabel(month).lowercase()}",
-                    "Tocca \"Aggiungi\" per registrare una spesa, un rimborso o un saldo tra membri.",
+                    "Tocca \"Aggiungi\" per registrare una spesa o un rimborso.",
                 )
             }
         }
@@ -155,13 +165,13 @@ fun ExpenseRow(e: Expense, d: HouseholdData, me: String?, onClick: () -> Unit) {
     val kind = e.kindEnum
     val title = when (kind) {
         ExpenseKind.SETTLEMENT -> "${d.nameOf(e.paidBy)} → ${d.nameOf(e.splitAmong.firstOrNull().orEmpty())}"
-        else -> e.description.ifBlank { e.categoryEnum.label }
+        else -> e.description.ifBlank { d.categoryOf(e.category).name }
     }
     val subtitle = when (kind) {
         ExpenseKind.EXPENSE -> "Pagato da ${if (e.paidBy == me) "te" else d.nameOf(e.paidBy)} · " +
             if (e.splitAmong.size == d.members.size) "diviso tra tutti" else "diviso tra ${e.splitAmong.size}"
         ExpenseKind.REFUND -> "Rimborso ricevuto da ${if (e.paidBy == me) "te" else d.nameOf(e.paidBy)}"
-        ExpenseKind.SETTLEMENT -> e.description.takeIf { it.isNotBlank() && it != "Saldo" } ?: "Saldo tra membri"
+        ExpenseKind.SETTLEMENT -> e.description.takeIf { it.isNotBlank() && it != "Saldo" } ?: "Saldo di fine mese"
     }
     val myEffect = me?.let { Ledger.effect(e)[it] } ?: 0L
     Card(
@@ -171,9 +181,9 @@ fun ExpenseRow(e: Expense, d: HouseholdData, me: String?, onClick: () -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             when (kind) {
-                ExpenseKind.SETTLEMENT -> CategoryBadge(Category.OTHER, icon = Icons.Outlined.Handshake)
-                ExpenseKind.REFUND -> CategoryBadge(e.categoryEnum, icon = Icons.AutoMirrored.Outlined.Undo)
-                else -> CategoryBadge(e.categoryEnum)
+                ExpenseKind.SETTLEMENT -> CategoryBadge(d.categoryOf(Category.OTHER), icon = Icons.Outlined.Handshake)
+                ExpenseKind.REFUND -> CategoryBadge(d.categoryOf(e.category), icon = Icons.AutoMirrored.Outlined.Undo)
+                else -> CategoryBadge(d.categoryOf(e.category))
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
