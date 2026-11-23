@@ -56,7 +56,8 @@ Per pubblicare una nuova versione:
 
 1. aggiorna `appVersion` in `gradle.properties` e aggiungi le novità in [`CHANGELOG.md`](CHANGELOG.md)
    (sezione `## x.y.z`, diventa il testo della release);
-2. crea e pubblica il tag corrispondente:
+2. pubblica: da **Actions → Android → Run workflow** spunta *Pubblica la release* (crea il tag
+   `v<appVersion>`), oppure crea e pubblica il tag a mano:
    ```bash
    git tag v1.1.0 && git push origin v1.1.0
    ```
